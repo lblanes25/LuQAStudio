@@ -1,32 +1,31 @@
 """
 Excel Formula UI for Configuration Wizard
 
-This module adds an Excel Formula UI component to the Configuration Wizard,
-allowing users to input and test Excel-style formulas.
+This module provides an enhanced UI component for inputting and testing Excel-style formulas,
+allowing users to write validation logic using familiar Excel syntax rather than Python code.
 """
 
 import os
+import threading
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+import logging
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Optional, Callable
-import threading
-import logging
-
+from tkinter import ttk, messagebox, filedialog
 from excel_formula_parser import ExcelFormulaParser
-from custom_formula_validation import test_custom_formula
 
 # Get logger
 logger = logging.getLogger("qa_analytics")
 
 
-class ExcelFormulaFrame(ttk.Frame):
+class EnhancedExcelFormulaFrame(ttk.Frame):
     """
-    A UI component for inputting and testing Excel-style formulas.
+    An enhanced UI component for inputting and testing Excel-style formulas.
 
-    This component can be integrated into the existing Configuration Wizard
-    to add support for custom Excel formulas.
+    This component can be integrated into the Configuration Wizard
+    to add support for custom Excel formulas, allowing users to write
+    validation logic using familiar Excel syntax.
     """
 
     def __init__(self, parent, config_manager=None, template_manager=None,
@@ -526,6 +525,7 @@ class ExcelFormulaFrame(ttk.Frame):
 
             # Use test_custom_formula or fallback to direct testing
             try:
+                from custom_formula_validation import test_custom_formula
                 test_result = test_custom_formula(formula, self.sample_data)
             except (ImportError, NameError):
                 # Fallback to direct testing if module not available
@@ -772,105 +772,33 @@ class ExcelFormulaFrame(ttk.Frame):
         self.formula_var.set(formula)
 
 
-# Custom formula validation fallback function (used if module not available)
-def test_custom_formula(formula, data):
-    """
-    Test an Excel formula against sample data.
-
-    This is a simple wrapper that can be used if the actual custom_formula_validation
-    module is not available.
-
-    Args:
-        formula: Excel-style formula to test
-        data: Pandas DataFrame to test against
-
-    Returns:
-        Dictionary with test results
-    """
-    parser = ExcelFormulaParser()
-
-    try:
-        # Parse the formula
-        parsed_formula, fields_used = parser.parse(formula)
-
-        # Check that all fields exist
-        missing_fields = [field for field in fields_used if field not in data.columns]
-        if missing_fields:
-            return {
-                'success': False,
-                'error': f"Fields not found in data: {', '.join(missing_fields)}"
-            }
-
-        # Execute the formula
-        import pandas as pd
-        import numpy as np
-
-        restricted_globals = {"__builtins__": {}}
-        safe_locals = {"df": data, "pd": pd, "np": np}
-
-        formula_result = eval(parsed_formula, restricted_globals, safe_locals)
-
-        # Convert to boolean Series if needed
-        if not isinstance(formula_result, pd.Series):
-            formula_result = pd.Series(formula_result, index=data.index)
-
-        if formula_result.dtype != bool:
-            formula_result = formula_result.astype(bool)
-
-        # Calculate statistics
-        total_records = len(data)
-        passing_count = formula_result.sum()
-        failing_count = total_records - passing_count
-
-        passing_percentage = f"{passing_count / total_records * 100:.1f}%" if total_records > 0 else "0.0%"
-
-        # Get example records
-        max_examples = 5
-        passing_examples = []
-        failing_examples = []
-
-        if passing_count > 0:
-            passing_indices = formula_result[formula_result].index[:max_examples]
-            for idx in passing_indices:
-                passing_examples.append(data.loc[idx].to_dict())
-
-        if failing_count > 0:
-            failing_indices = formula_result[~formula_result].index[:max_examples]
-            for idx in failing_indices:
-                failing_examples.append(data.loc[idx].to_dict())
-
-        # Return results
-        return {
-            'success': True,
-            'total_records': total_records,
-            'passing_count': passing_count,
-            'failing_count': failing_count,
-            'passing_percentage': passing_percentage,
-            'passing_examples': passing_examples,
-            'failing_examples': failing_examples
-        }
-
-    except Exception as e:
-        logger.error(f"Custom formula test error: {e}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
+# Backwards compatibility alias
+ExcelFormulaFrame = EnhancedExcelFormulaFrame
 
 
-# Example standalone usage
+# Main function for standalone testing
 if __name__ == "__main__":
-    # Create a root window
+    import logging
+
+    # Configure logging for standalone mode
+    logging.basicConfig(level=logging.INFO,
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    # Create root window
     root = tk.Tk()
-    root.title("Excel Formula UI Example")
-    root.geometry("700x800")
+    root.title("Excel Formula UI Test")
+    root.geometry("800x800")
 
-    # Create and pack the Excel Formula UI
-    formula_ui = ExcelFormulaFrame(root)
-    formula_ui.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+    # Create frame
+    frame = ttk.Frame(root, padding=10)
+    frame.pack(fill=tk.BOTH, expand=True)
 
-    # Set an example formula
+    # Create Excel Formula UI
+    formula_ui = EnhancedExcelFormulaFrame(frame)
+    formula_ui.pack(fill=tk.BOTH, expand=True)
+
+    # Set example formula
     formula_ui.set_formula("Submitter <> Approver AND `Submit Date` <= `TL Date`")
 
-    # Start the main loop
+    # Start main loop
     root.mainloop()
